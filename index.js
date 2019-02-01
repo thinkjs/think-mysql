@@ -39,6 +39,7 @@ class ThinkMysql {
     config = helper.extend({}, defaultConfig, config);
     this.config = config;
     this.maxRetryTimes = Math.max(config.connectionLimit + 1, 3);
+    this.inTransaction = false;
     this.pool = mysql.createPool(helper.omit(config, 'logger,logConnect,logSql'));
 
     this.pool.on('acquire', connection => {
@@ -71,6 +72,10 @@ class ThinkMysql {
   getConnection(connection) {
     if (connection && !connection[CONNECTION_LOST]) return Promise.resolve(connection);
     const promise = helper.promisify(this.pool.getConnection, this.pool)();
+    const allConnectionLength = this.pool._allConnections.length;
+    if (allConnectionLength && this.inTransaction) {
+      return Promise.reject(new Error('cannot create more connection in transation, use db() to reuse connection!'));
+    }
     if (this.config.afterConnect) {
       return promise.then(connection => {
         return this.config.afterConnect(connection).then(() => connection);
@@ -83,6 +88,7 @@ class ThinkMysql {
    * @param {Object} connection
    */
   startTrans(connection) {
+    this.inTransaction = true;
     return this.getConnection(connection).then(connection => {
       if (connection[TRANSACTIONS] === undefined) {
         connection[TRANSACTIONS] = 0;
@@ -102,6 +108,7 @@ class ThinkMysql {
    * @param {Object} connection
    */
   commit(connection) {
+    this.inTransaction = false;
     if (connection && connection[TRANSACTIONS]) {
       connection[TRANSACTIONS]--;
       if (connection[TRANSACTIONS] !== 0) return Promise.resolve();
@@ -117,6 +124,7 @@ class ThinkMysql {
    * @param {Object} connection
    */
   rollback(connection) {
+    this.inTransaction = false;
     if (connection && connection[TRANSACTIONS]) {
       connection[TRANSACTIONS]--;
       if (connection[TRANSACTIONS] !== 0) return Promise.resolve();
