@@ -4,6 +4,8 @@ const mock = require('mock-require');
 mock('mysql', {
   createPool: () => {
     return {
+      _allConnections: [],
+      _connectionQueue: [],
       getConnection(callback) {
         callback(null, {
           query(sqlOptions, callback) {
@@ -23,6 +25,7 @@ mock('mysql', {
           }
         });
       },
+      releaseConnection(connection) {},
       on() {
 
       },
